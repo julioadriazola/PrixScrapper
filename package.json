@@ -1,0 +1,25 @@
+{
+  "name": "seconddapp",
+  "private": true,
+  "version": "0.0.0",
+  "description": "a Sails application",
+  "keywords": [],
+  "dependencies": {
+    "include-all": "~0.1.6",
+    "rc": "1.0.1",
+    "sails": "~0.12.1",
+    "sails-disk": "~0.10.9",
+    "sprintf-js": "^1.0.3"
+  },
+  "scripts": {
+    "debug": "node debug app.js",
+    "start": "node app.js"
+  },
+  "main": "app.js",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/marrano_/seconddapp.git"
+  },
+  "author": "marrano_",
+  "license": ""
+}
