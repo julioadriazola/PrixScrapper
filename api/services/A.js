@@ -10,6 +10,76 @@ var c_store= {name: "Lider"};
 
 module.exports = {
 
+	//Product detail
+	f: function(a){
+		/*
+			PROD_6053567	jugo vivo
+			PROD_6423148	tele
+			PROD_6714994 	Notebook
+			PROD_6048946 	Pistola silicona
+			PROD_1395693	Jabon barra
+			PROD_2794242	Leche colun
+			PROD_6417819	Lenovo Notebook
+
+		 */
+		var wait= 1;
+		var route = {
+			url: 'http://www.lider.cl/walmart/catalog/product/productDetails.jsp?productId=%s',
+			// args: ['PROD_6053567']
+			args: [a?a:'PROD_6714994']
+		};
+
+		sails.log(spf(route.url,route.args));
+
+		A.phantomSSL(
+			spf(route.url,route.args),
+			wait,
+			function(ph,page){
+				page.evaluate(function(){
+					var tmp = {
+						brand: $('.titulo-ficha-superior span[itemprop=brand]').text().trim(),
+						name: $('.titulo-ficha-superior span[itemprop=name]').text().trim(),
+						ref: $('.titulo-ficha-superior span[itemprop=sku]').text().trim(),
+						images: $.makeArray($('.MagicScrollItem a'))
+								.map(function(e){
+									return 'http://www.lider.cl'+$(e).attr('href');
+								})
+					};
+					if($('#ModCarac').length){
+						tmp.type = 'tecnologico';
+						tmp.features = $.makeArray($('#ModCarac .wrapMetaContent'))
+										.map(function(e){
+											return { key: $(e).find('p.firstItem').text().trim(), 
+											val: $(e).find('p.secondItem').text().trim()
+											};
+										});
+						return tmp;
+
+					}
+					else if($('#wrapDescProd').length){
+						tmp.type = 'almacen';
+						tmp.features = $('#wrapDescProd .feature p')
+										.html()
+										.replace(/(&nbsp;|<strong>|:)/g,"")
+										.split("<br>")
+										.map(function(e){ 
+											var a = e.split("</strong>"); 
+											return a.length==2?
+												{key: a[0].trim(), val: a[1].trim()}
+												:null; 
+										});
+						return tmp;
+					}
+				}).then(function(a){
+					sails.log("F RESULT -->");
+					sails.log(a);
+					page.close();
+					ph.exit();
+				});
+			}
+		);
+	},
+
 
 
 	//New products and price refresh
@@ -92,19 +162,12 @@ module.exports = {
 		);
 	},
 
-	updateCategory: function(category,update,fn){
-		A.start(function(err){
-			if(err) return fn(err);
-			db.collection('categories').updateOne(category,update,fn);
-		});
-	},
-
 	a: function(){
 		A.refreshProducts({scrape_it: true});
 	},
 
 	aa: function(){
-		A.refreshProducts({scrape_it:true, errored:true});
+		A.refreshProducts({scrape_it:true, $or: [{status:"processing"},{status:"failed"}]});
 	},
 
 	aaa: function(){
@@ -146,44 +209,6 @@ module.exports = {
 
 
 			});
-		});
-	},
-
-	updateMultipleProductPrices: function(updates,fn,i){
-		if(!updates.length) return fn(null);
-		if(!i) i = 0;
-
-		if(i == updates.length) return fn(null);
-		A.updateProduct(
-			updates[i].where,
-			{
-				$set: 	updates[i].push,
-				$push: 	{
-							prices:  updates[i].push
-						}
-			},
-			function(err,p){
-				if(err) return fn(err);
-				A.updateMultipleProductPrices(updates,fn,i+1);
-				// A.updateMultipleProductPrices(updates,fn,updates.length);
-			}
-
-		);
-		
-	},
-
-	updateProduct: function(product,update,fn){
-		A.start(function(err){
-			if(err) return fn(err);
-			db.collection('products').updateOne(product,update,fn);
-		});
-	},
-
-	addProducts: function(products,fn){
-		if(!products.length) return fn(null,[]);
-		A.start(function(err){
-			if(err) return fn(err);
-			db.collection('products').insertMany(products,fn);
 		});
 	},
 
@@ -232,7 +257,7 @@ module.exports = {
 						});
 					});
 
-					setTimeout(function(){callit(i+1)},2*1000);
+					setTimeout(function(){callit(i+1);},2*1000);
 				}; // end function callit 
 
 
@@ -241,6 +266,35 @@ module.exports = {
 		});
 	},
 
+
+	b: function(){
+		A.getStore(c_store,function(err,store){
+			if(err) return sails.log(err);
+
+			sails.log(store);
+			A.getCategories({store_id: store._id},function(err,categories){
+				if(err) return sails.log(err);
+			});
+
+		});
+	},
+
+	insertLider: function(){
+		A.newStore(
+			{
+				name: 			"Lider",
+				main_page: 		"https://secure.lider.cl/walmart/home.jsp",
+				use_scraper: 	true,
+				razon_social: 	"Líder Domicilio Ventas y Distribución Limitada",
+				rut: 			78968610,
+				rut_v: 			6,
+				created_at: 	new Date(),
+				updated_at: 	new Date()
+			},
+			function(err,result){
+				if(err) sails.log.error(err);
+			});
+	},
 
 	//Categories
 	scrapCategories: function(fn){
@@ -277,18 +331,6 @@ module.exports = {
 				});
 			}
 		);
-	},
-
-	b: function(){
-		A.getStore(c_store,function(err,store){
-			if(err) return sails.log(err);
-
-			sails.log(store);
-			A.getCategories({store_id: store._id},function(err,categories){
-				if(err) return sails.log(err);
-			});
-
-		});
 	},
 
 	scrapNewCategories: function(){
@@ -329,75 +371,6 @@ module.exports = {
 			db.collection('categories').insertMany(categories,fn);
 		});
 	},
-	//Product detail
-	f: function(a){
-		/*
-			PROD_6053567	jugo vivo
-			PROD_6423148	tele
-			PROD_6714994 	Notebook
-			PROD_6048946 	Pistola silicona
-			PROD_1395693	Jabon barra
-			PROD_2794242	Leche colun
-			PROD_6417819	Lenovo Notebook
-
-		 */
-		var wait= 1;
-		var route = {
-			url: 'http://www.lider.cl/walmart/catalog/product/productDetails.jsp?productId=%s',
-			// args: ['PROD_6053567']
-			args: [a?a:'PROD_6714994']
-		};
-
-		sails.log(spf(route.url,route.args));
-
-		A.phantomSSL(
-			spf(route.url,route.args),
-			wait,
-			function(ph,page){
-				page.evaluate(function(){
-					var tmp = {
-						brand: $('.titulo-ficha-superior span[itemprop=brand]').text().trim(),
-						name: $('.titulo-ficha-superior span[itemprop=name]').text().trim(),
-						ref: $('.titulo-ficha-superior span[itemprop=sku]').text().trim(),
-						images: $.makeArray($('.MagicScrollItem a'))
-								.map(function(e){
-									return 'http://www.lider.cl'+$(e).attr('href');
-								})
-					};
-					if($('#ModCarac').length){
-						tmp.type = 'tecnologico';
-						tmp.features = $.makeArray($('#ModCarac .wrapMetaContent'))
-										.map(function(e){
-											return { key: $(e).find('p.firstItem').text().trim(), 
-											val: $(e).find('p.secondItem').text().trim()
-											};
-										});
-						return tmp;
-
-					}
-					else if($('#wrapDescProd').length){
-						tmp.type = 'almacen';
-						tmp.features = $('#wrapDescProd .feature p')
-										.html()
-										.replace(/(&nbsp;|<strong>|:)/g,"")
-										.split("<br>")
-										.map(function(e){ 
-											var a = e.split("</strong>"); 
-											return a.length==2?
-												{key: a[0].trim(), val: a[1].trim()}
-												:null; 
-										});
-						return tmp;
-					}
-				}).then(function(a){
-					sails.log("F RESULT -->");
-					sails.log(a);
-					page.close();
-					ph.exit();
-				});
-			}
-		);
-	},
 
 	newStore: function(store,fn){
 		A.start(function(err){
@@ -424,22 +397,13 @@ module.exports = {
 		});
 	},
 
-	insertLider: function(){
-		A.newStore(
-			{
-				name: 			"Lider",
-				main_page: 		"https://secure.lider.cl/walmart/home.jsp",
-				use_scraper: 	true,
-				razon_social: 	"Líder Domicilio Ventas y Distribución Limitada",
-				rut: 			78968610,
-				rut_v: 			6,
-				created_at: 	new Date(),
-				updated_at: 	new Date()
-			},
-			function(err,result){
-				if(err) sails.log.error(err);
-			});
+	updateCategory: function(category,update,fn){
+		A.start(function(err){
+			if(err) return fn(err);
+			db.collection('categories').updateOne(category,update,fn);
+		});
 	},
+
 
 	getStore: function(where,fn){
 		A.start(function(err){
@@ -467,6 +431,44 @@ module.exports = {
 				if(doc) products.push(doc);
 				else fn(null,products);
 			});
+		});
+	},
+
+	updateMultipleProductPrices: function(updates,fn,i){
+		if(!updates.length) return fn(null);
+		if(!i) i = 0;
+
+		if(i == updates.length) return fn(null);
+		A.updateProduct(
+			updates[i].where,
+			{
+				$set: 	updates[i].push,
+				$push: 	{
+							prices:  updates[i].push
+						}
+			},
+			function(err,p){
+				if(err) return fn(err);
+				A.updateMultipleProductPrices(updates,fn,i+1);
+				// A.updateMultipleProductPrices(updates,fn,updates.length);
+			}
+
+		);
+		
+	},
+
+	updateProduct: function(product,update,fn){
+		A.start(function(err){
+			if(err) return fn(err);
+			db.collection('products').updateOne(product,update,fn);
+		});
+	},
+
+	addProducts: function(products,fn){
+		if(!products.length) return fn(null,[]);
+		A.start(function(err){
+			if(err) return fn(err);
+			db.collection('products').insertMany(products,fn);
 		});
 	},
 
