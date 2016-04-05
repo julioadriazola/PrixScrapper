@@ -8,25 +8,77 @@ var url = 'mongodb://localhost:27017/test';
 var db = null;
 var c_store= {name: "Lider"};
 
+var features_mapping={
+	"marca": 															"brand",
+	"envase": 															"format",
+	"país de origen": 													"country",
+	"tamaño": 															"size",
+	"duración": 														"duration",
+	"modo de empleo": 													"use",
+	"tipo": 															"type",
+	"fragancia": 														"arome",
+	"aroma": 															"arome",
+	"contiene": 														"contains",
+	"precauciones": 													"precautions",
+	"almacenamiento": 													"conservation",
+	"información adicional": 											"additional",
+	"cituc": 															"emergency number",
+	"johson consultas": 												"consultation number",
+	"servicio al consumidor": 											"client service",
+	"servicio de atención al consumidor": 								"client service",
+	"servicio atención al cliente": 	 								"client service",
+	"garantía": 														"warranty",
+	"relleno": 															"filled",
+	"resistencia": 														"resistance",
+	"descripción": 														"description",
+	"producto": 														"product",
+	"certificado": 														"certification",
+	"uso": 																"use",
+	"color": 															"colour",
+	"aprobado": 														"approved",
+	"peso del producto": 												"weight",
+	"correas": 															"correas",
+	"material exterior": 												"material exterior",
+	"cinta de seguridad":												"cinta de seguridad",
+	"dimensiones (alto x ancho x largo)": 								"dimensions",
+	"incluye": 															"includes",
+	"para": 															"for",
+	"variedad": 														"type",
+	"acción": 															"action",
+	"tipo de piel": 													"skin type",
+	"cantidad": 														"quantity",
+	"hojas": 															"quantity",
+	"diseño": 															"design",
+	"lineado": 															"lineado",
+	"ahorro": 															"saving",
+	"valle": 															"valle",
+	"estilo": 															"style",
+	"cepa principal": 													"cepa",
+	"maridaje/armonia": 												"maridaje/armonia",
+	"grados alcohólicos": 												"alcohol",
+	"servir": 															"use",
+	"referencia": 														"ref",
+	"sabor": 															"flavor"
+};
+
+Array.prototype.clean = function(deleteValue) {
+  for (var i = 0; i < this.length; i++) {
+    if (this[i] == deleteValue) {         
+      this.splice(i, 1);
+      i--;
+    }
+  }
+  return this;
+};
+
 module.exports = {
 
 	//Product detail
-	f: function(a){
-		/*
-			PROD_6053567	jugo vivo
-			PROD_6423148	tele
-			PROD_6714994 	Notebook
-			PROD_6048946 	Pistola silicona
-			PROD_1395693	Jabon barra
-			PROD_2794242	Leche colun
-			PROD_6417819	Lenovo Notebook
-
-		 */
+	f: function(product,fn){
 		var wait= 1;
 		var route = {
-			url: 'http://www.lider.cl/walmart/catalog/product/productDetails.jsp?productId=%s',
-			// args: ['PROD_6053567']
-			args: [a?a:'PROD_6714994']
+			url: 'https://secure.lider.cl%s',
+			args: [product.href]
 		};
 
 		sails.log(spf(route.url,route.args));
@@ -42,9 +94,17 @@ module.exports = {
 						ref: $('.titulo-ficha-superior span[itemprop=sku]').text().trim(),
 						images: $.makeArray($('.MagicScrollItem a'))
 								.map(function(e){
-									return 'http://www.lider.cl'+$(e).attr('href');
+									return 'https://secure.lider.cl'+$(e).attr('href');
+								}),
+						tags: $('.breadcrumbs')
+								.html()
+								.replace(/(<a[^>]+>|<\/a>|<p>|<\/p>)/gi,"")
+								.split("<span>&nbsp;</span>")
+								.map(function(el){
+    								return el.trim()=="Inicio"?null:el.trim();
 								})
 					};
+
 					if($('#ModCarac').length){
 						tmp.type = 'tecnologico';
 						tmp.features = $.makeArray($('#ModCarac .wrapMetaContent'))
@@ -56,8 +116,8 @@ module.exports = {
 						return tmp;
 
 					}
-					else if($('#wrapDescProd').length){
-						tmp.type = 'almacen';
+					else if($('#wrapDescProd .feature p').length){
+						tmp.type 	 = 'almacen';
 						tmp.features = $('#wrapDescProd .feature p')
 										.html()
 										.replace(/(&nbsp;|<strong>|:)/g,"")
@@ -70,17 +130,89 @@ module.exports = {
 										});
 						return tmp;
 					}
+					else if($('#wrapDescProd .titu').length){
+						tmp.type = 'almacen';
+						tmp.features = $('#wrapDescProd')
+										.html()
+										.replace(/<h5.+\/small>/gi,"")
+										.split('</p><p class="titu">')
+										.map(function(e){
+											var a = e.split("</strong></p><p>");
+											return a.length==2?{
+												key: a[0]
+														.replace("<strong>","")
+														.replace('<p class="titu">',"")
+														.trim(),
+												val: a[1]
+														.replace("</p>","")
+														.trim()
+											}:null;
+										});
+						return tmp;
+					}
+					else return tmp;
 				}).then(function(a){
-					sails.log("F RESULT -->");
-					sails.log(a);
 					page.close();
 					ph.exit();
+					a.features = a.features.clean('').map(function(el){
+						if(features_mapping[el.key.toLowerCase()])
+							el.key_common= features_mapping[el.key.toLowerCase()];
+						else sails.log(el.key.toLowerCase()+" doesn't exist");
+
+						return el;
+					});
+					a.tags= a.tags.clean('');
+					fn(product,a);
 				});
 			}
 		);
 	},
 
 
+	fillProductDetail: function(products_s){
+		A.getStore(c_store,function(err,store){
+			if(err) return sails.log.error(err);
+			products_s.store_id = store._id;
+			products_s._object = {$exists: false};
+
+			A.getProducts(products_s,function(err,products){
+				if(err) return sails.log.error(err);
+
+				var callit = function(i){
+
+					if(!products.length) return;
+					if(!i) i = 0;
+					if(products.length == i) return;
+
+					var prod = products[i];
+					A.f(prod,function(prod,r){
+						sails.log(r);
+						A.updateProduct(
+							{_id:prod._id},
+							{
+								$set:{_object: r},
+								$currentDate:{updated_at: {$type: "timestamp"}}
+							},
+							function(err,p){
+								if(err) return sails.log.error(err);
+								sails.log(prod.ref + ": " + r.brand + ", " + r.name);
+							}						
+						);
+					});
+
+					setTimeout(function(){callit(i+1);},1*1000);
+				}; // end function callit 
+
+
+				callit();
+
+			});
+		});
+	},
+
+	b: function(){
+		A.fillProductDetail({ref: {$lt: 200000}});
+	},
 
 	//New products and price refresh
 	scrapProductPrices: function(categoria,fn){
@@ -267,17 +399,6 @@ module.exports = {
 	},
 
 
-	b: function(){
-		A.getStore(c_store,function(err,store){
-			if(err) return sails.log(err);
-
-			sails.log(store);
-			A.getCategories({store_id: store._id},function(err,categories){
-				if(err) return sails.log(err);
-			});
-
-		});
-	},
 
 	insertLider: function(){
 		A.newStore(
@@ -491,8 +612,8 @@ module.exports = {
 		phantom.create(['--ignore-ssl-errors=yes','--ssl-protocol=any']).then(function(ph) {
 			ph.createPage().then(function(page) {
 				page.open(route).then(function(status) {
-					sails.log.silly(status);
-					page.injectJs('http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js').then(function(){
+					sails.log.info(status);
+					page.injectJs('https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js').then(function(){
 						setTimeout(function(){fn(ph,page);}, wait * 1000);
 					});
 				});
